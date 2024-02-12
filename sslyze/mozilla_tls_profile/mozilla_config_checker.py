@@ -29,27 +29,31 @@ class _MozillaCiphersAsJson(pydantic.BaseModel):
 
 
 class _MozillaTlsConfigurationAsJson(pydantic.BaseModel):
-    certificate_curves: Set[str]
-    certificate_signatures: Set[str]
-    certificate_types: Set[str]
-    ciphersuites: Set[str]
-    ciphers: _MozillaCiphersAsJson
-    dh_param_size: Optional[int]
-    ecdh_param_size: int
-    hsts_min_age: int
-    maximum_certificate_lifespan: int
-    ocsp_staple: bool
-    recommended_certificate_lifespan: int
-    rsa_key_size: Optional[int]
-    server_preferred_order: bool
-    tls_curves: Set[str]
-    tls_versions: Set[str]
+    certificate_curves: Set[str] = None
+    certificate_signatures: Set[str] = None
+    certificate_types: Set[str] = None
+    ciphersuites: Set[str] = None
+    ciphers: _MozillaCiphersAsJson = None
+    dh_param_size: Optional[int] = None
+    ecdh_param_size: int = None
+    hsts_min_age: int = None
+    maximum_certificate_lifespan: int = None
+    ocsp_staple: bool = None
+    recommended_certificate_lifespan: int = None
+    rsa_key_size: Optional[int] = None
+    server_preferred_order: bool = None
+    tls_curves: Set[str] = None
+    tls_versions: Set[str] = None
+    parent: str = None
 
 
 class _AllMozillaTlsConfigurationsAsJson(pydantic.BaseModel):
     modern: _MozillaTlsConfigurationAsJson
     intermediate: _MozillaTlsConfigurationAsJson
     old: _MozillaTlsConfigurationAsJson
+    departement13_modern: _MozillaTlsConfigurationAsJson
+    departement13_intermediate: _MozillaTlsConfigurationAsJson
+    minemeld: _MozillaTlsConfigurationAsJson
 
 
 class _MozillaTlsProfileAsJson(pydantic.BaseModel):
@@ -62,6 +66,9 @@ class MozillaTlsConfigurationEnum(str, Enum):
     MODERN = "modern"
     INTERMEDIATE = "intermediate"
     OLD = "old"
+    DEPARTEMENT13_MODERN = "departement13_modern"
+    DEPARTEMENT13_INTERMEDIATE = "departement13_intermediate"
+    MINEMELD = "minemeld"
 
 
 class ServerNotCompliantWithMozillaTlsConfiguration(Exception):
@@ -104,6 +111,7 @@ class MozillaTlsConfigurationChecker:
         json_profile_path = Path(__file__).parent.absolute() / "5.7.json"
         json_profile_as_str = json_profile_path.read_text()
         parsed_profile = _MozillaTlsProfileAsJson(**json.loads(json_profile_as_str))
+  
         return cls(parsed_profile)
 
     def check_server(
@@ -125,6 +133,19 @@ class MozillaTlsConfigurationChecker:
         mozilla_config: _MozillaTlsConfigurationAsJson = getattr(
             self._mozilla_tls_profile.configurations, against_config.value
         )
+        
+        # Inherit missing attributes from parent config
+        # Allows for specialized parametres for certain devices, without having to copy/paste the entire config
+        if mozilla_config.parent != None:
+            parent_config: _MozillaTlsConfigurationAsJson = getattr(
+                self._mozilla_tls_profile.configurations, mozilla_config.parent
+            )
+            for key, val in iter(parent_config):
+                if getattr(mozilla_config, key) != None:
+                    setattr(parent_config, key, getattr(mozilla_config, key))
+
+            mozilla_config = parent_config
+
         all_issues: Dict[str, str] = {}
 
         # Checks on the certificate
@@ -159,7 +180,6 @@ class MozillaTlsConfigurationChecker:
                 mozilla_config=against_config,
                 issues=all_issues,
             )
-
 
 def _check_tls_curves(
     tls_curves_result: SupportedEllipticCurvesScanResult,
@@ -216,6 +236,7 @@ def _check_tls_versions_and_ciphers(
     mozilla_config: _MozillaTlsConfigurationAsJson,
 ) -> Dict[str, str]:
     # First parse the results related to TLS versions and ciphers
+
     tls_versions_supported = set()
     cipher_suites_supported = set()
     tls_1_3_cipher_suites_supported = set()
