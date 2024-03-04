@@ -389,14 +389,6 @@
             "tls_versions": [
                 "TLSv1.1"
             ]
-        },
-        "minemeld": {
-            "tls_versions": [
-                "TLSv1",
-                "TLSv1.1",
-                "TLSv1.2"
-            ],
-            "parent": "departement13_intermediate"
         }
     }
 }
